@@ -13,11 +13,11 @@ valid = detrend(data(n+1:end),0);
 
 % Detrending the data improve the fit massively
 %% Delay evaluation
-impulse(train);
+% impulse(train,'sd',3,'fill');
 % no delay -> nk = 1
 %% ARX Model
-% kmax = 50
-% maxOrd(kmax,data,train)
+kmax = 20;
+maxOrd(kmax,data,train,valid,'arx')
 % kmax = 20;
 % maxFit(kmax,train,valid)
 na = 6;
@@ -38,6 +38,8 @@ ARXf = arx(trainf,[na nb nk]);
 compare(validf,ARXf)
 % Fit 70%
 %% Box Jenkins
+kmax = 20;
+maxOrd(kmax,data,train,valid,'bj')
 nb = 6; 
 na = 8;
 nc = 6;
@@ -65,6 +67,8 @@ figure,compare(validf,BJf)
 figure, step(BJ,BJf),legend('stima senza pref.','stima con pref.')
 % Fit of 85%
 %% OE
+kmax = 20;
+maxOrd(kmax,data,train,valid,'oe')
 na = 6;
 nb = na;
 nk = 1;
@@ -74,6 +78,8 @@ advice(OE,valid)
 figure,resid(OE,valid);
 % Fit 50%
 %% ARMAX
+kmax = 20;
+maxOrd(kmax,data,train,valid,'armax')
 na = 8;
 nb = na;
 nc = 5;
@@ -84,7 +90,8 @@ advice(ARMAX,valid)
 figure,resid(ARMAX,valid);
 % Fit 66%
 %% NLARX
-
+kmax = 20;
+maxOrd(kmax,data,train,valid,'nlarx')
 NLARX = nlarx(train,[5 5 1],'sigmoidnet');
 figure,resid(valid,NLARX)
 % NLARX = nlarx(train,[5 5 1],'linear');
@@ -97,21 +104,21 @@ figure,resid(valid,HW)
 % Fit 71%
 % Whitness analysis not passed
 %% Compare
-% load modelComparison
+ load modelComparison
 figure,compare(valid,ARX,ARMAX,BJ,OE,NLARX,HW)
 % As can be seen, a Box Jenkins Model could be the best one
 %% Neural Network
 % clear all
 % load  NN_Temperature_Control
-% net = newff(U,Y,[2 2 2 2]);
+% net = newff(U,Y,[2 2 2 2 2 2]);
 % Ynet = sim(net,U);
-% figure(),plot(U,Ynet,'ok')
-% 
-% % train
+% figure(),plot(U,Ynet,'ok',U,Y,'or')
+
+% train
 % net.trainParam.epochs = 200;
 % net = train(net,U,Y);
 % Ynet = sim(net,U);
-% figure(),plot(U,Y,'o-g')
+% figure(),plot(U,Ynet,'ok',U,Y,'or')
 
 function [] = maxFit(kmax,train,valid)
 for k = 1:kmax
@@ -122,38 +129,41 @@ for k = 1:kmax
 figure,plot(1:kmax,Fit)
 end
 
-function [] = maxOrd(kmax,data,train)
+function [] = maxOrd(kmax,data,train,valid,model)
 N1 = length(train.U);
 N = length(data.U);
 for k = 1:kmax
-    m = arx(train,[k k 1]);
-    y = data.Y;
-    ysim = sim(m,data.U);
-    es = y-ysim;
-    errp=pe(m,data);
-    ep=errp.OutputData;
-    JPT(k) = cov(ep(1:N1)); % indice di aderenza ai dati di training errore di pred
-   JPV(k) =cov(ep(N1+1:N));% aderenza dati validazione
-
-   JST(k) = cov(es(1:N1)); % aderenza dati training errore di simulazione
-   JSV(k) = cov(es(N1+1:N)); % errore di simulazione dati validazione
-
+    switch(model)
+        case 'arx'
+            m = arx(train,[k k 1]);
+        case 'bj'
+            m = bj(train,[k k k k 1]);
+        case 'armax'
+            m  = armax(train,[k k k 1]);
+        case 'oe'
+            m = oe(train,[k k 1]);
+        case 'nlarx'
+           m = nlarx(train,[k k 1],'sigmoidnet');
+    end
+    ept = pe(m,train);
+    epv = pe(m,valid);
+    Jt(k) = cov(ept.Outputdata);
+    Jv(k) = cov(epv.Outputdata);
    Jfpe(k) = fpe(m);
    %  FPE = Akaikes Final Predition Error = JPT*(N+n)/(N-n)
    Jaic(k) = aic(m);
    %  AIC = Akaikes Information Criterion log(JPT) + 2n/N  
    n=2*k;
-   Jmdl(k) = log(N1)*n/N1 + log(JPT(k));
+   Jmdl(k) = log(N1)*n/N1 + log(Jt(k));
 end
 x=1:kmax;
-figure(), subplot(211),plot(x,JPT,'r',x,JPV,'b'),xlabel('model order'),ylabel('J_{PRED}')
+figure('NumberTitle', 'off', 'Name',model), plot(x,Jt,'b',x,Jv,'r'),xlabel('model order'),ylabel('J_{PRED}')
            legend('training','validation')
-           subplot(212),plot(x,JST,'r',x,JSV,'b'),xlabel('model order'),ylabel('J_{SIM}')
-           legend('training','validation')
+           
 
-figure(), subplot(311),plot(x,Jfpe),xlabel('model order'),ylabel('FPE')
-           subplot(312),plot(x,Jaic),xlabel('model order'),ylabel('AIC')
-           subplot(313),plot(x,Jmdl),xlabel('model order'),ylabel('MDL')
+% figure(), subplot(311),plot(x,Jfpe),xlabel('model order'),ylabel('FPE')
+%            subplot(312),plot(x,Jaic),xlabel('model order'),ylabel('AIC')
+%            subplot(313),plot(x,Jmdl),xlabel('model order'),ylabel('MDL')
 end
 
 
